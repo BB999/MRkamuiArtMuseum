@@ -293,11 +293,26 @@
                 renderer.xr.setReferenceSpaceType('local');
                 await renderer.xr.setSession(xrSession);
 
+                // MR開始時にモデルをプレイヤーの目の前に配置
+                if (model) {
+                    model.position.set(0, -1, -3); // 前方3m、床に近い位置
+                    model.rotation.y = 0; // 正面を向くように回転をリセット
+                }
+
                 mrButton.textContent = 'MRを終了';
 
                 xrSession.addEventListener('end', () => {
                     xrSession = null;
                     mrButton.textContent = 'MRを起動';
+                    // MR終了時に元の位置に戻す
+                    if (model) {
+                        const box = new THREE.Box3().setFromObject(model);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const scale = 3 / maxDim;
+                        model.position.sub(center.multiplyScalar(scale));
+                    }
                 });
 
             } catch (error) {
