@@ -217,11 +217,11 @@
                         }
                     });
 
-                    // スケール調整
+                    // スケール調整（4倍に拡大）
                     const box = new THREE.Box3().setFromObject(model);
                     const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 3 / maxDim;
+                    const scale = 12 / maxDim; // 6から12に変更して4倍のサイズ
                     model.scale.multiplyScalar(scale);
 
                     // 中心に配置
@@ -295,7 +295,7 @@
 
                 // MR開始時にモデルをプレイヤーの目の前に配置
                 if (model) {
-                    model.position.set(0, -1.6, -3); // 前方3m、プレイヤーの足元（床面）に配置
+                    model.position.set(0, -1.6, -10); // 前方10m、プレイヤーの足元（床面）に配置
                     model.rotation.y = 0; // 正面を向くように回転をリセット
                 }
 
@@ -310,7 +310,7 @@
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3());
                         const maxDim = Math.max(size.x, size.y, size.z);
-                        const scale = 3 / maxDim;
+                        const scale = 12 / maxDim; // 4倍サイズに合わせて12に変更
                         model.position.sub(center.multiplyScalar(scale));
                     }
                 });
