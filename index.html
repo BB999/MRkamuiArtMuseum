@@ -246,28 +246,41 @@
         }
 
         // MRボタン設定
-        function setupMRButton() {
+        async function setupMRButton() {
             const mrButton = document.getElementById('mr-button');
 
-            // WebXRサポートチェック
+            // WebXRサポートチェック（詳細ログ付き）
+            console.log('WebXRサポートチェック開始');
+            console.log('navigator.xr:', !!navigator.xr);
+
             if ('xr' in navigator) {
-                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-                    if (supported) {
+                try {
+                    const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+                    const vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
+
+                    console.log('AR対応:', arSupported);
+                    console.log('VR対応:', vrSupported);
+                    console.log('User Agent:', navigator.userAgent);
+
+                    if (arSupported) {
                         mrButton.addEventListener('click', onMRButtonClick);
+                        console.log('MRボタンを有効化しました');
+                    } else if (vrSupported) {
+                        mrButton.textContent = 'VRを起動';
+                        mrButton.addEventListener('click', onVRButtonClick);
+                        console.log('VRボタンを有効化しました');
                     } else {
-                        // AR非対応の場合はVRをチェック
-                        navigator.xr.isSessionSupported('immersive-vr').then((vrSupported) => {
-                            if (vrSupported) {
-                                mrButton.textContent = 'VRを起動';
-                                mrButton.addEventListener('click', onVRButtonClick);
-                            } else {
-                                mrButton.textContent = 'XR非対応';
-                                mrButton.disabled = true;
-                            }
-                        });
+                        mrButton.textContent = 'XR非対応';
+                        mrButton.disabled = true;
+                        console.log('XRが対応していません');
                     }
-                });
+                } catch (error) {
+                    console.error('WebXRサポートチェック中にエラー:', error);
+                    mrButton.textContent = 'エラー';
+                    mrButton.disabled = true;
+                }
             } else {
+                console.log('navigator.xrが存在しません');
                 mrButton.textContent = 'WebXR非対応';
                 mrButton.disabled = true;
             }
@@ -285,10 +298,28 @@
             }
 
             try {
+                console.log('MRセッション開始を試行中...');
+
+                // WebXRサポートの詳細チェック
+                if (!navigator.xr) {
+                    throw new Error('WebXRがサポートされていません');
+                }
+
+                const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+                console.log('ARサポート確認:', arSupported);
+
+                if (!arSupported) {
+                    throw new Error('ARモードがサポートされていません');
+                }
+
+                console.log('ARセッション要求中...');
                 xrSession = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['hit-test', 'dom-overlay'],
+                    requiredFeatures: ['local'],
+                    optionalFeatures: ['hit-test', 'dom-overlay'],
                     domOverlay: { root: document.body }
                 });
+
+                console.log('ARセッション作成成功:', xrSession);
 
                 renderer.xr.setReferenceSpaceType('local');
                 await renderer.xr.setSession(xrSession);
@@ -339,7 +370,17 @@
 
             } catch (error) {
                 console.error('MRセッション開始エラー:', error);
-                alert('MRモードの起動に失敗しました');
+                let errorMessage = 'MRモードの起動に失敗しました';
+
+                if (error.message.includes('WebXR')) {
+                    errorMessage += '\nWebXRに対応したブラウザが必要です（Chrome、Edge等）';
+                } else if (error.message.includes('ARモード')) {
+                    errorMessage += '\nARモードに対応したデバイスが必要です';
+                } else {
+                    errorMessage += `\nエラー詳細: ${error.message}`;
+                }
+
+                alert(errorMessage);
             }
         }
 
