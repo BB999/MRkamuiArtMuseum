@@ -297,6 +297,17 @@
                 if (model) {
                     model.position.set(0, -1.6, -10); // 前方10m、プレイヤーの足元（床面）に配置
                     model.rotation.y = 0; // 正面を向くように回転をリセット
+
+                    // MRモード時はメッシュを両面表示に設定
+                    model.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => mat.side = THREE.DoubleSide);
+                            } else {
+                                child.material.side = THREE.DoubleSide;
+                            }
+                        }
+                    });
                 }
 
                 mrButton.textContent = 'MRを終了';
@@ -306,6 +317,17 @@
                     mrButton.textContent = 'MRを起動';
                     // MR終了時に元の位置に戻す
                     if (model) {
+                        // マテリアルを片面表示に戻す
+                        model.traverse((child) => {
+                            if (child.isMesh && child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => mat.side = THREE.FrontSide);
+                                } else {
+                                    child.material.side = THREE.FrontSide;
+                                }
+                            }
+                        });
+
                         const box = new THREE.Box3().setFromObject(model);
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3());
