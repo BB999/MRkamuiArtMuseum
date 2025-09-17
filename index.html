@@ -106,8 +106,10 @@
         let leftController = null;
         let rightController = null;
         let yButtonPressed = false;
+        let xButtonPressed = false;
         let initialControllerPosition = null;
         let initialScale = null;
+        let initialModelPosition = null;
 
         // シーンの初期化
         function init() {
@@ -448,9 +450,104 @@
                 // 左コントローラー（通常インデックス0）
                 if (inputSource.handedness === 'left' || index === 0) {
                     const gamepad = inputSource.gamepad;
+                    // Xボタンは通常ボタンインデックス2
+                    const xButton = gamepad.buttons[2];
                     // Yボタンは通常ボタンインデックス3
                     const yButton = gamepad.buttons[3];
 
+                    // 左スティック入力（axes[2]が横軸、axes[3]が縦軸）
+                    if (gamepad.axes && gamepad.axes.length >= 4) {
+                        const stickX = gamepad.axes[2]; // 左右（-1:左、1:右）
+                        const stickY = gamepad.axes[3]; // 上下（-1:上、1:下）
+
+                        // デッドゾーンを設定（微小な入力を無視）
+                        const deadzone = 0.1;
+
+                        // 現在のXRカメラの位置と向きを取得
+                        const xrCamera = renderer.xr.getCamera();
+
+                        // スティックで方向転換（左右）
+                        if (Math.abs(stickX) > deadzone) {
+                            const rotationSpeed = 0.02; // 回転速度
+                            const rotationAngle = -stickX * rotationSpeed;
+
+                            // カメラのリファレンススペースを取得して回転を適用
+                            const referenceSpace = renderer.xr.getReferenceSpace();
+                            if (referenceSpace) {
+                                // Y軸回転のクォータニオンを作成
+                                const halfAngle = rotationAngle / 2;
+                                const transform = new XRRigidTransform(
+                                    { x: 0, y: 0, z: 0, w: 1 },
+                                    {
+                                        x: 0,
+                                        y: Math.sin(halfAngle),
+                                        z: 0,
+                                        w: Math.cos(halfAngle)
+                                    }
+                                );
+                                const newReferenceSpace = referenceSpace.getOffsetReferenceSpace(transform);
+                                renderer.xr.setReferenceSpace(newReferenceSpace);
+                            }
+                        }
+
+                        // スティックで前後移動（上下）
+                        if (Math.abs(stickY) > deadzone) {
+                            const moveSpeed = 0.1; // 移動速度
+
+                            // XRカメラの向きから前方ベクトルを計算
+                            const cameraMatrix = xrCamera.matrixWorld;
+                            const forward = new THREE.Vector3();
+                            cameraMatrix.extractBasis(new THREE.Vector3(), new THREE.Vector3(), forward);
+
+                            // Y成分を0にして水平移動のみにする
+                            forward.y = 0;
+                            forward.normalize();
+
+                            // 移動量を計算（スティックは下が正なので符号反転）
+                            const movement = forward.multiplyScalar(-stickY * moveSpeed);
+
+                            // カメラのリファレンススペースを移動
+                            const referenceSpace = renderer.xr.getReferenceSpace();
+                            if (referenceSpace) {
+                                const transform = new XRRigidTransform(
+                                    { x: movement.x, y: 0, z: movement.z, w: 1 },
+                                    { x: 0, y: 0, z: 0, w: 1 }
+                                );
+                                const newReferenceSpace = referenceSpace.getOffsetReferenceSpace(transform);
+                                renderer.xr.setReferenceSpace(newReferenceSpace);
+                            }
+                        }
+                    }
+
+                    // Xボタン - 位置移動
+                    if (xButton && xButton.pressed) {
+                        if (!xButtonPressed) {
+                            // Xボタンが押された瞬間
+                            xButtonPressed = true;
+                            initialControllerPosition = leftController.position.clone();
+                            initialModelPosition = model.position.clone();
+                            console.log('Xボタン押下開始 - 位置移動モード');
+                        } else {
+                            // Xボタンを押し続けている間
+                            const currentPos = leftController.position;
+                            // コントローラーの移動量を計算
+                            const deltaX = currentPos.x - initialControllerPosition.x;
+                            const deltaY = currentPos.y - initialControllerPosition.y;
+                            const deltaZ = currentPos.z - initialControllerPosition.z;
+
+                            // モデルの位置を更新（移動感度を調整）
+                            const movementScale = 3; // 移動感度
+                            model.position.x = initialModelPosition.x + deltaX * movementScale;
+                            model.position.y = initialModelPosition.y + deltaY * movementScale;
+                            model.position.z = initialModelPosition.z + deltaZ * movementScale;
+                        }
+                    } else if (xButtonPressed) {
+                        // Xボタンが離された
+                        xButtonPressed = false;
+                        console.log('Xボタン離した - 位置確定:', model.position);
+                    }
+
+                    // Yボタン - スケール調整
                     if (yButton && yButton.pressed) {
                         if (!yButtonPressed) {
                             // Yボタンが押された瞬間
