@@ -103,6 +103,11 @@
         let scene, camera, renderer, controls;
         let model;
         let xrSession = null;
+        let leftController = null;
+        let rightController = null;
+        let yButtonPressed = false;
+        let initialControllerPosition = null;
+        let initialScale = null;
 
         // シーンの初期化
         function init() {
@@ -217,11 +222,11 @@
                         }
                     });
 
-                    // スケール調整（4倍に拡大）
+                    // スケール調整（5倍に拡大）
                     const box = new THREE.Box3().setFromObject(model);
                     const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 12 / maxDim; // 6から12に変更して4倍のサイズ
+                    const scale = 15 / maxDim; // 12から15に変更して5倍のサイズ
                     model.scale.multiplyScalar(scale);
 
                     // 中心に配置
@@ -324,6 +329,9 @@
                 renderer.xr.setReferenceSpaceType('local');
                 await renderer.xr.setSession(xrSession);
 
+                // コントローラーの設定
+                setupControllers();
+
                 // MR開始時にモデルをプレイヤーの目の前に配置
                 if (model) {
                     model.position.set(0, -1.6, -10); // 前方10m、プレイヤーの足元（床面）に配置
@@ -363,7 +371,7 @@
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3());
                         const maxDim = Math.max(size.x, size.y, size.z);
-                        const scale = 12 / maxDim; // 4倍サイズに合わせて12に変更
+                        const scale = 15 / maxDim; // 5倍サイズに合わせて15に変更
                         model.position.sub(center.multiplyScalar(scale));
                     }
                 });
@@ -414,6 +422,62 @@
             }
         }
 
+        // コントローラーの設定
+        function setupControllers() {
+            // 左コントローラー（インデックス0）
+            leftController = renderer.xr.getController(0);
+            scene.add(leftController);
+
+            // 右コントローラー（インデックス1）
+            rightController = renderer.xr.getController(1);
+            scene.add(rightController);
+
+            console.log('コントローラーを設定しました');
+        }
+
+        // コントローラー入力の処理
+        function handleControllerInput() {
+            if (!xrSession || !model) return;
+
+            const session = renderer.xr.getSession();
+            if (!session || !session.inputSources) return;
+
+            session.inputSources.forEach((inputSource, index) => {
+                if (!inputSource.gamepad) return;
+
+                // 左コントローラー（通常インデックス0）
+                if (inputSource.handedness === 'left' || index === 0) {
+                    const gamepad = inputSource.gamepad;
+                    // Yボタンは通常ボタンインデックス3
+                    const yButton = gamepad.buttons[3];
+
+                    if (yButton && yButton.pressed) {
+                        if (!yButtonPressed) {
+                            // Yボタンが押された瞬間
+                            yButtonPressed = true;
+                            initialControllerPosition = leftController.position.clone();
+                            initialScale = model.scale.clone();
+                            console.log('Yボタン押下開始 - スケール調整モード');
+                        } else {
+                            // Yボタンを押し続けている間
+                            const currentPos = leftController.position;
+                            // 上下の動きでスケール調整（上で拡大、下で縮小）
+                            const deltaY = currentPos.y - initialControllerPosition.y;
+                            const scaleFactor = 1 + deltaY * 2; // スケール変化係数
+
+                            // スケールを0.1倍から10倍の範囲に制限
+                            const newScale = Math.max(0.1, Math.min(10, scaleFactor));
+                            model.scale.copy(initialScale).multiplyScalar(newScale);
+                        }
+                    } else if (yButtonPressed) {
+                        // Yボタンが離された
+                        yButtonPressed = false;
+                        console.log('Yボタン離した - スケール確定:', model.scale.x);
+                    }
+                }
+            });
+        }
+
         // ウィンドウリサイズ
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -434,6 +498,11 @@
 
             if (controls && !xrSession) {
                 controls.update();
+            }
+
+            // XRセッション中はコントローラー入力を処理
+            if (xrSession) {
+                handleControllerInput();
             }
 
             renderer.render(scene, camera);
