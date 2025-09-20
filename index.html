@@ -110,6 +110,9 @@
         let initialControllerPosition = null;
         let initialScale = null;
         let initialModelPosition = null;
+        let audioListener = null;
+        let positionalAudio1 = null;
+        let positionalAudio2 = null;
 
         // シーンの初期化
         function init() {
@@ -127,6 +130,10 @@
                 1000
             );
             camera.position.set(0, 2, 5);
+
+            // オーディオリスナーをカメラに追加（3D音響のため）
+            audioListener = new THREE.AudioListener();
+            camera.add(audioListener);
 
             // レンダラー設定
             renderer = new THREE.WebGLRenderer({
@@ -205,6 +212,163 @@
             scene.add(spotLight);
         }
 
+        // GLB内のPlaneに動画テクスチャを追加
+        function addVideosToGLBPlanes() {
+            console.log('GLB内のPlaneを探しています...');
+
+            if (!model) {
+                console.log('モデルがまだ読み込まれていません');
+                return;
+            }
+
+            // 動画要素を作成（Web Audioで処理するため音声トラックは別扱い）
+            const video1 = document.createElement('video');
+            video1.src = './9eBn-9_gL0PD4NXh.mp4';
+            video1.loop = true;
+            video1.muted = true; // ビデオ自体はミュート
+            video1.playsInline = true;
+            video1.crossOrigin = 'anonymous';
+
+            const video2 = document.createElement('video');
+            video2.src = './4LLziv00GFqjO5MY.mp4';
+            video2.loop = true;
+            video2.muted = true; // ビデオ自体はミュート
+            video2.playsInline = true;
+            video2.crossOrigin = 'anonymous';
+
+            // 動画テクスチャを作成
+            const videoTexture1 = new THREE.VideoTexture(video1);
+            videoTexture1.minFilter = THREE.LinearFilter;
+            videoTexture1.magFilter = THREE.LinearFilter;
+            videoTexture1.format = THREE.RGBAFormat;
+            videoTexture1.needsUpdate = true;
+
+            const videoTexture2 = new THREE.VideoTexture(video2);
+            videoTexture2.minFilter = THREE.LinearFilter;
+            videoTexture2.magFilter = THREE.LinearFilter;
+            videoTexture2.format = THREE.RGBAFormat;
+            videoTexture2.needsUpdate = true;
+
+            // 3D音源を作成
+            positionalAudio1 = new THREE.PositionalAudio(audioListener);
+            positionalAudio2 = new THREE.PositionalAudio(audioListener);
+
+            // 動画を音源として設定
+            positionalAudio1.setMediaElementSource(video1);
+            positionalAudio1.setDistanceModel('exponential');  // 指数関数的減衰
+            positionalAudio1.setRefDistance(1);     // 1m以内では音量が減衰しない
+            positionalAudio1.setMaxDistance(5);     // 5m以上離れると聞こえない
+            positionalAudio1.setRolloffFactor(5);   // 減衰の強さ
+            positionalAudio1.setVolume(1.0);
+
+            positionalAudio2.setMediaElementSource(video2);
+            positionalAudio2.setDistanceModel('exponential');  // 指数関数的減衰
+            positionalAudio2.setRefDistance(1);     // 1m以内では音量が減衰しない
+            positionalAudio2.setMaxDistance(5);     // 5m以上離れると聞こえない
+            positionalAudio2.setRolloffFactor(5);   // 減衰の強さ
+            positionalAudio2.setVolume(1.0);
+
+            // 動画を再生開始
+            video1.play().catch(e => console.log('動画1の再生エラー:', e));
+            video2.play().catch(e => console.log('動画2の再生エラー:', e));
+
+            // GLBモデル内のPlaneメッシュを探索
+            const planes = [];
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    console.log('メッシュ発見:', child.name, child.geometry.type);
+
+                    // Planeっぽいジオメトリを探す
+                    if (child.name.toLowerCase().includes('plane') ||
+                        child.name.toLowerCase().includes('quad') ||
+                        child.geometry.type === 'PlaneGeometry' ||
+                        (child.geometry.attributes.position &&
+                         child.geometry.attributes.position.count === 4)) {
+
+                        console.log('Planeメッシュを発見:', child.name);
+                        planes.push(child);
+                    }
+                }
+            });
+
+            // 動画のサイズに合わせてPlaneのスケールを調整する関数
+            function adjustPlaneToVideoAspect(plane, video) {
+                video.addEventListener('loadedmetadata', () => {
+                    const videoAspect = video.videoWidth / video.videoHeight;
+                    console.log(`動画サイズ: ${video.videoWidth}x${video.videoHeight}, アスペクト比: ${videoAspect}`);
+
+                    // Planeの現在のサイズを取得
+                    const geometry = plane.geometry;
+                    const bbox = new THREE.Box3().setFromObject(plane);
+                    const size = bbox.getSize(new THREE.Vector3());
+
+                    // 幅を基準にして高さを調整
+                    const currentWidth = size.x;
+                    const newHeight = currentWidth / videoAspect;
+
+                    // スケールを調整
+                    plane.scale.y = newHeight / size.y;
+                    console.log(`Planeのスケールを調整: ${plane.name}, Y scale: ${plane.scale.y}`);
+                });
+            }
+
+            // 見つかったPlaneに動画を適用
+            if (planes.length >= 2) {
+                // 1つ目のPlaneに動画1を適用
+                planes[0].material = new THREE.MeshBasicMaterial({
+                    map: videoTexture1,
+                    side: THREE.DoubleSide
+                });
+                console.log('動画1を適用しました:', planes[0].name);
+                adjustPlaneToVideoAspect(planes[0], video1);
+
+                // 3D音源をPlaneに追加
+                planes[0].add(positionalAudio1);
+
+                // 2つ目のPlaneに動画2を適用
+                planes[1].material = new THREE.MeshBasicMaterial({
+                    map: videoTexture2,
+                    side: THREE.DoubleSide
+                });
+                console.log('動画2を適用しました:', planes[1].name);
+                adjustPlaneToVideoAspect(planes[1], video2);
+
+                // 3D音源をPlaneに追加
+                planes[1].add(positionalAudio2);
+            } else if (planes.length === 1) {
+                // 1つだけ見つかった場合は動画1を適用
+                planes[0].material = new THREE.MeshBasicMaterial({
+                    map: videoTexture1,
+                    side: THREE.DoubleSide
+                });
+                console.log('動画1を適用しました（Planeが1つのみ）:', planes[0].name);
+                adjustPlaneToVideoAspect(planes[0], video1);
+                planes[0].add(positionalAudio1);
+            } else {
+                console.log('Planeメッシュが見つかりませんでした');
+            }
+
+            // クリック/タップで3D音声を開始（最初の一回のみ）
+            let audioInitialized = false;
+            window.addEventListener('click', () => {
+                if (!audioInitialized) {
+                    // AudioContextのサスペンド状態を解除
+                    if (audioListener.context.state === 'suspended') {
+                        audioListener.context.resume().then(() => {
+                            console.log('AudioContextがリジュームされました');
+
+                            // 音声を再生
+                            video1.muted = false;
+                            video2.muted = false;
+
+                            console.log('3D音響が開始されました - 距離に応じて音量が変化します');
+                            audioInitialized = true;
+                        });
+                    }
+                }
+            });
+        }
+
         // モデル読み込み
         function loadModel() {
             const loader = new GLTFLoader();
@@ -212,7 +376,7 @@
             const mrButton = document.getElementById('mr-button');
 
             loader.load(
-                './AstroRoom.glb',
+                './scene (2).glb',
                 function(gltf) {
                     model = gltf.scene;
 
@@ -236,6 +400,9 @@
                     model.position.sub(center.multiplyScalar(scale));
 
                     scene.add(model);
+
+                    // GLB内のPlaneに動画を追加
+                    addVideosToGLBPlanes();
 
                     // UI更新
                     loadingElement.classList.add('hidden');
@@ -592,6 +759,13 @@
             if (model && !xrSession) {
                 model.rotation.y += 0.002;
             }
+
+            // スプライトのアニメーション更新
+            scene.traverse((child) => {
+                if (child.userData.update) {
+                    child.userData.update();
+                }
+            });
 
             if (controls && !xrSession) {
                 controls.update();
